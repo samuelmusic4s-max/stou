@@ -99,6 +99,8 @@ class ImportMaterialFiles:
 
             material = Material.create(
                 kind=kind,
+                # El nombre del archivo que el usuario reconoce manda; el título
+                # embebido solo se usa si existe.
                 title=inspected.title or path.stem,
                 now=now,
                 category_id=category_id,

@@ -26,13 +26,33 @@ STREAK_LOOKBACK_DAYS = 400
 
 
 class GetDashboard:
+    """El período se resuelve aquí, con el reloj inyectado.
+
+    La vista pide «esta semana» por nombre y no calcula fechas: si lo hiciera con el
+    reloj del sistema, la interfaz y las métricas podrían discrepar.
+    """
+
     def __init__(self, uow: UnitOfWork, clock: Clock) -> None:
         self._uow = uow
         self._clock = clock
 
-    def execute(self, *, period: Period | None = None) -> DashboardData:
+    def period_for(self, key: str) -> Period:
         now = self._clock.now()
-        window = period or periods.current_week(now)
+        builders = {
+            "today": periods.today,
+            "week": periods.current_week,
+            "month": periods.current_month,
+            "last30": lambda moment: periods.last_days(moment, 30),
+        }
+        return builders.get(key, periods.current_week)(now)
+
+    def execute(
+        self, *, period: Period | None = None, period_key: str | None = None
+    ) -> DashboardData:
+        now = self._clock.now()
+        window = period or (
+            self.period_for(period_key) if period_key else periods.current_week(now)
+        )
 
         with self._uow as uow:
             index = CategoryIndex(uow.categories.list_all())

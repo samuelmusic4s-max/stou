@@ -18,6 +18,37 @@ def build_services(container: Container):  # noqa: ANN201 - se resuelve en prese
     return AppServices(events=UiEvents(container.bus), **use_cases)
 
 
+def _install_error_reporting() -> None:
+    """Que ningún fallo quede en silencio.
+
+    Qt atrapa las excepciones que ocurren dentro de un slot: escribe el traceback en la
+    consola y sigue como si nada. Para el usuario eso significa un botón que no hace
+    nada y ni un mensaje. Aquí se convierte en un aviso visible.
+    """
+    import traceback
+
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    log = logging.getLogger("stou")
+
+    def hook(kind, value, tb) -> None:  # noqa: ANN001
+        if issubclass(kind, KeyboardInterrupt):
+            sys.__excepthook__(kind, value, tb)
+            return
+        log.error("Error no controlado", exc_info=(kind, value, tb))
+        if QApplication.instance() is None:
+            return
+        detail = "".join(traceback.format_exception(kind, value, tb))[-1500:]
+        QMessageBox.critical(
+            None,
+            "Algo falló",
+            f"{kind.__name__}: {value}\n\nLa aplicación sigue abierta. El detalle "
+            f"técnico está en la consola.\n\n{detail}",
+        )
+
+    sys.excepthook = hook
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -45,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("STOU")
     app.setOrganizationName("stou")
     apply_theme(app)
+    _install_error_reporting()
 
     services = build_services(container)
     window = MainWindow(services)

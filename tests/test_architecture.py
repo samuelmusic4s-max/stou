@@ -103,3 +103,55 @@ def test_los_eventos_son_inmutables() -> None:
         and not obj.__dataclass_params__.frozen
     ]
     assert not mutable, f"Eventos mutables: {mutable}"
+
+
+def test_ninguna_senal_clicked_conecta_un_metodo_con_argumentos() -> None:
+    """El bug del botón muerto, convertido en regla.
+
+    ``QPushButton.clicked`` emite un ``bool``. Si se conecta directamente a un método
+    que acepta argumentos, ese bool entra como el primero de ellos, el método falla y
+    Qt se come la excepción: el botón queda muerto sin una sola pista. La forma segura
+    es envolverlo en una lambda sin parámetros.
+    """
+    offenders: list[str] = []
+
+    for path in (SRC / "presentation").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+        # Métodos del módulo que aceptan algo más que self.
+        with_args: dict[str, int] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                positional = len(node.args.args) - 1  # descontando self
+                keyword_only = len(node.args.kwonlyargs)
+                if positional > 0 or keyword_only > 0:
+                    with_args[node.name] = positional + keyword_only
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            target = node.func
+            if not (isinstance(target, ast.Attribute) and target.attr == "connect"):
+                continue
+            signal = target.value
+            if not (
+                isinstance(signal, ast.Attribute)
+                and signal.attr in {"clicked", "toggled", "triggered", "pressed"}
+            ):
+                continue
+            if not node.args:
+                continue
+            handler = node.args[0]
+            # self._algo  →  método del propio widget
+            if (
+                isinstance(handler, ast.Attribute)
+                and isinstance(handler.value, ast.Name)
+                and handler.value.id == "self"
+                and handler.attr in with_args
+            ):
+                offenders.append(
+                    f"{path.relative_to(SRC)}:{node.lineno} "
+                    f"{signal.attr}.connect(self.{handler.attr}) — envuélvelo en lambda"
+                )
+
+    assert not offenders, "Conexiones que se romperán en silencio:\n" + "\n".join(offenders)

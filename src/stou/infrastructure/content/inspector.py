@@ -61,7 +61,10 @@ class FileInspector:
                 return _inspect_media(path, kind)
         except Exception:
             log.warning("No se pudo inspeccionar %s", path.name, exc_info=True)
-        return InspectedMaterial(kind=kind, title=path.stem)
+        # Sin título propio se devuelve None a propósito: quien importa conoce el
+        # nombre del archivo original, y esta ruta es la de la copia interna, cuyo
+        # nombre es el hash del contenido.
+        return InspectedMaterial(kind=kind, title=None)
 
 
 # --- PDF ----------------------------------------------------------------------
@@ -88,7 +91,7 @@ def _inspect_pdf(path: Path) -> InspectedMaterial:
 
     return InspectedMaterial(
         kind=MaterialKind.PDF,
-        title=title or path.stem,
+        title=title,
         page_count=page_count,
         outline=tuple(entries),
     )
@@ -135,7 +138,7 @@ def _inspect_epub(path: Path) -> InspectedMaterial:
         rootfile = container.find(".//container:rootfile", _NS)
         opf_path = rootfile.get("full-path") if rootfile is not None else None
         if not opf_path:
-            return InspectedMaterial(kind=MaterialKind.EPUB, title=path.stem)
+            return InspectedMaterial(kind=MaterialKind.EPUB, title=None)
 
         opf = ElementTree.fromstring(book.read(opf_path))
         base = opf_path.rsplit("/", 1)[0] if "/" in opf_path else ""
@@ -164,7 +167,7 @@ def _inspect_epub(path: Path) -> InspectedMaterial:
 
         return InspectedMaterial(
             kind=MaterialKind.EPUB,
-            title=title or path.stem,
+            title=title or None,
             page_count=len(spine) or None,
             outline=tuple(outline),
         )
@@ -252,7 +255,7 @@ def _epub_outline(
 
 def _inspect_media(path: Path, kind: MaterialKind) -> InspectedMaterial:
     duration = _probe_duration(path)
-    return InspectedMaterial(kind=kind, title=path.stem, duration_seconds=duration)
+    return InspectedMaterial(kind=kind, title=None, duration_seconds=duration)
 
 
 def _probe_duration(path: Path) -> float | None:

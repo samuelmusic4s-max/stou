@@ -22,12 +22,19 @@ from PySide6.QtWidgets import (
 
 from stou.application.dto import HomeOverview, TaskRow
 from stou.domain.events import (
+    CategoryCreated,
+    CategoryDeleted,
+    ExamCreated,
+    ExamRecorded,
+    MaterialDeleted,
     MaterialImported,
+    SectionsCreated,
     SectionStudied,
     StudySessionClosed,
     TaskCompleted,
     TaskCreated,
     TaskDeleted,
+    TaskScheduled,
     TaskStatusChanged,
 )
 from stou.presentation.qt import motion
@@ -93,15 +100,24 @@ class HomeView(QWidget):
         self.refresh()
 
     def _connect_events(self) -> None:
+        # Inicio reacciona a todo lo que puede cambiar la respuesta a «qué hago ahora»,
+        # incluidas las categorías: sin ellas el primer paso de la guía no avanzaría.
         self._s.events.on(
             (
+                CategoryCreated,
+                CategoryDeleted,
                 TaskCreated,
                 TaskDeleted,
                 TaskCompleted,
                 TaskStatusChanged,
+                TaskScheduled,
                 StudySessionClosed,
                 MaterialImported,
+                MaterialDeleted,
+                SectionsCreated,
                 SectionStudied,
+                ExamCreated,
+                ExamRecorded,
             ),
             lambda _e: self.refresh(),
         )
@@ -402,7 +418,9 @@ class HomeView(QWidget):
         )
         if data.streak_days:
             motion.count_up(
-                lambda value: streak.set_value(f"{value} d"), target=data.streak_days
+                streak,
+                lambda value: streak.set_value(f"{value} d"),
+                target=data.streak_days,
             )
 
         for tile in (today, week, streak):

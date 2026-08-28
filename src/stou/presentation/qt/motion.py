@@ -152,24 +152,33 @@ def pulse(widget: QWidget, *, duration: int | None = None) -> None:
 
 
 def count_up(
+    owner: QWidget,
     label_setter: Callable[[int], None],
     *,
     target: int,
     duration: int | None = None,
     steps: int = 18,
 ) -> None:
-    """Cuenta un número hacia arriba. Hace que una métrica se sienta viva."""
-    if target <= 0:
+    """Cuenta un número hacia arriba. Hace que una métrica se sienta viva.
+
+    ``owner`` es el widget dueño de la cifra: el temporizador se cuelga de él para que
+    muera con él. Si la vista se refresca a mitad de la cuenta, el temporizador ya no
+    existe y no intenta escribir en una etiqueta destruida.
+    """
+    if target <= 0 or not is_alive(owner):
         label_setter(target)
         return
     total = duration or MOTION["slow"]
     interval = max(16, total // steps)
     state = {"i": 0}
 
-    timer = QTimer()
+    timer = QTimer(owner)
     timer.setInterval(interval)
 
     def tick() -> None:
+        if not is_alive(owner):
+            timer.stop()
+            return
         state["i"] += 1
         progress = min(1.0, state["i"] / steps)
         # Misma curva que el resto del movimiento, para que se sienta igual.
@@ -177,10 +186,8 @@ def count_up(
         label_setter(int(round(target * eased)))
         if progress >= 1.0:
             timer.stop()
-            _ALIVE.discard(timer)
 
     timer.timeout.connect(tick)
-    _ALIVE.add(timer)
     timer.start()
 
 

@@ -7,7 +7,7 @@ Lo que no se midió se dice con palabras en lugar de dibujar un cero.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPaintEvent
@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from stou.application import periods
 from stou.application.dto import CategoryTime, DashboardData, DayTime, TaskRow
 from stou.domain.events import (
     ExamRecorded,
@@ -183,17 +182,12 @@ class DashboardView(QWidget):
     # --- datos ----------------------------------------------------------------
 
     def refresh(self) -> None:
-        now = datetime.now(UTC)
-        window = {
-            "today": periods.today,
-            "week": periods.current_week,
-            "month": periods.current_month,
-            "last30": lambda moment: periods.last_days(moment, 30),
-        }[PERIODS[self._period.currentIndex()][1]](now)
-
-        data = self._s.dashboard.execute(period=window)
+        # El período lo resuelve la capa de aplicación con su reloj: la vista solo
+        # dice cuál quiere.
+        key = PERIODS[self._period.currentIndex()][1]
+        data = self._s.dashboard.execute(period_key=key)
         self._data = data
-        local_now = now.astimezone()
+        local_now = datetime.now().astimezone()
 
         self._headline.set_value(
             format_duration_short(data.total_seconds) if data.total_seconds else "—"

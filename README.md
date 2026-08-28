@@ -24,6 +24,24 @@ library/       copias internas del material, por hash de contenido
 cache/epub/    libros descomprimidos para leer
 ```
 
+## Cómo se usa
+
+La aplicación abre en **Inicio**, que responde a una sola pregunta: qué hacer ahora.
+
+- La primera vez muestra tres pasos y **un solo botón a la vez**: crear una materia,
+  subir material, crear la primera tarea.
+- Después muestra una tarjeta grande con la tarea que toca (la que está en progreso,
+  o la más urgente), tus tareas abiertas para retomar, y el tiempo de hoy y de la
+  semana.
+
+Las otras cuatro vistas se recorren con `Ctrl+1…5`: Tareas, Biblioteca, Calendario e
+Historial. `Ctrl+N` crea una tarea desde cualquier parte, `Ctrl+I` sube material y
+`Ctrl+F` va al buscador. Dentro del modo estudio, `F11` esconde todo menos el material
+y `Ctrl+Intro` marca la sección como estudiada.
+
+Ninguna lista aparece vacía sin explicación: cada estado vacío dice para qué sirve esa
+pantalla y ofrece la acción que corresponde.
+
 ## Verificar
 
 ```bash
