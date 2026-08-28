@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Entorno
+.venv/
+.env
+
+# Datos de STOU si alguien apunta STOU_DATA_DIR dentro del repo
+stou.db
+stou.db-wal
+stou.db-shm
+/library/
+/cache/
+/data/

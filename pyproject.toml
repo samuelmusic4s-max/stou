@@ -1,0 +1,38 @@
+[project]
+name = "stou"
+version = "0.1.0"
+description = "STOU: gestor de tareas de estudio con material integrado"
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6==6.11.2",
+    "pypdf==6.16.2",
+]
+
+[project.scripts]
+stou = "stou.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+    "pytest-qt==4.5.0",
+    "ruff==0.14.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stou"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
