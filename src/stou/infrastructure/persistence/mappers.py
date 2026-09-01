@@ -13,6 +13,7 @@ from stou.domain.entities.study_session import StudySession
 from stou.domain.entities.task import Task, TaskItem
 from stou.domain.values import (
     ExamResult,
+    ItemRole,
     Locator,
     LocatorUnit,
     MaterialKind,
@@ -180,12 +181,14 @@ def task_params(task: Task) -> dict[str, object]:
 
 
 def to_task_item(row: sqlite3.Row) -> TaskItem:
+    keys = row.keys()
     return TaskItem(
         id=EntityId(row["id"]),
         task_id=EntityId(row["task_id"]),
         material_id=EntityId(row["material_id"]),
         section_id=EntityId(row["section_id"]) if row["section_id"] else None,
         position=row["position"],
+        role=ItemRole(row["role"]) if "role" in keys and row["role"] else ItemRole.MATERIAL,
     )
 
 

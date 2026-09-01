@@ -151,6 +151,8 @@ class TaskMaterialAssigned(DomainEvent):
     task_id: EntityId
     material_id: EntityId
     section_id: EntityId | None
+    # 'material' o 'solution'. Con default para no romper a quien ya lo construía.
+    role: str = "material"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

@@ -4,8 +4,19 @@ El movimiento no es decoración: explica de dónde viene lo que apareció y a d�
 fue lo que se fue. Reglas que sigue esta capa:
 
 - Corto. Nada por encima de 360 ms: una interfaz lenta se siente pesada, no elegante.
-- Una sola propiedad a la vez (opacidad o posición), con `OutCubic`.
+- Una sola propiedad a la vez, con `OutCubic`.
 - Nunca bloquea: si la animación no corre, la interfaz queda igual de usable.
+
+Dos cosas que aquí **no** se hacen, porque ya rompieron la interfaz una vez:
+
+1. **No se anima `pos` de un widget que gobierna un layout.** El layout recoloca al
+   widget en cada relayout —cualquier cambio de tamaño de la ventana— y pelea con la
+   animación: el widget acaba en un sitio que no le toca, o directamente fuera de la
+   tarjeta.
+2. **No se deja un `QGraphicsOpacityEffect` puesto.** El efecto guarda un mapa de bits
+   de lo que envuelve; al cambiar el tamaño, ese mapa se dibuja desactualizado y deja
+   bandas rectangulares detrás del texto. Aquí el efecto se quita siempre: al terminar,
+   si el widget cambia de tamaño, y por un temporizador de seguridad.
 """
 
 from __future__ import annotations
@@ -14,8 +25,8 @@ from collections.abc import Callable
 
 from PySide6.QtCore import (
     QEasingCurve,
+    QEvent,
     QObject,
-    QPoint,
     QPropertyAnimation,
     QSequentialAnimationGroup,
     Qt,
@@ -51,51 +62,84 @@ def _keep(animation: QObject) -> None:
     animation.finished.connect(lambda: _ALIVE.discard(animation))  # type: ignore[attr-defined]
 
 
-def fade_in(widget: QWidget, *, duration: int | None = None, start: float = 0.0) -> None:
-    """Aparición por opacidad."""
+def clear_effect(widget: QWidget) -> None:
+    """Quita el efecto de opacidad y deja el widget completamente visible.
+
+    Es la red de seguridad de toda esta capa: mientras el efecto siga puesto, un
+    cambio de tamaño puede dejar restos dibujados, y una animación que no llegó a
+    correr deja el widget invisible.
+    """
     if not is_alive(widget):
         return
+    if widget.graphicsEffect() is not None:
+        widget.setGraphicsEffect(None)
+    widget.update()
+
+
+class _DropEffectOnResize(QObject):
+    """Quita el efecto en cuanto el widget cambia de tamaño.
+
+    Un `QGraphicsOpacityEffect` sobreviviendo a un cambio de tamaño es justo el caso
+    que dibuja bandas detrás del texto. Antes que arriesgarlo, se sacrifica la
+    animación: se corta y el widget queda visible.
+    """
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - API de Qt
+        if event.type() == QEvent.Type.Resize and isinstance(watched, QWidget):
+            clear_effect(watched)
+            watched.removeEventFilter(self)
+            _ALIVE.discard(self)
+        return False
+
+
+def fade_in(widget: QWidget, *, duration: int | None = None, start: float = 0.0) -> None:
+    """Aparición por opacidad. El efecto se retira siempre, pase lo que pase."""
+    if not is_alive(widget):
+        return
+    total = duration or MOTION["base"]
+
     effect = QGraphicsOpacityEffect(widget)
     effect.setOpacity(start)
     widget.setGraphicsEffect(effect)
 
+    guard = _DropEffectOnResize()
+    _ALIVE.add(guard)
+    widget.installEventFilter(guard)
+
     animation = QPropertyAnimation(effect, b"opacity", widget)
-    animation.setDuration(duration or MOTION["base"])
+    animation.setDuration(total)
     animation.setStartValue(start)
     animation.setEndValue(1.0)
     animation.setEasingCurve(_EASE)
-    # Al terminar se quita el efecto: dejarlo puesto cuesta repintados de más.
-    animation.finished.connect(
-        lambda: widget.setGraphicsEffect(None) if is_alive(widget) else None
-    )
+    animation.finished.connect(lambda: clear_effect(widget))
     _keep(animation)
     animation.start()
+
+    # Seguridad: si la animación nunca corre —ventana todavía sin mostrar, plataforma
+    # sin composición— el widget no puede quedarse invisible.
+    rescue = QTimer(widget)
+    rescue.setSingleShot(True)
+    rescue.timeout.connect(lambda: clear_effect(widget))
+    rescue.start(total + 250)
 
 
 def rise_in(
     widget: QWidget,
     *,
-    distance: int = 14,
     duration: int | None = None,
     delay: int = 0,
+    **_ignored: object,
 ) -> None:
-    """Entra desde abajo con desvanecido. Es el gesto de «esto acaba de llegar»."""
+    """Entrada de un bloque. Solo opacidad: la posición la manda el layout.
+
+    Acepta y descarta ``distance`` para no romper a quien la llamaba con ese nombre.
+    """
 
     def run() -> None:
         # La vista pudo refrescarse y borrar el widget mientras esperaba el retardo.
         if not is_alive(widget) or widget.isHidden():
             return
-        target = widget.pos()
-        widget.move(target + QPoint(0, distance))
-
-        slide = QPropertyAnimation(widget, b"pos", widget)
-        slide.setDuration(duration or MOTION["base"])
-        slide.setStartValue(target + QPoint(0, distance))
-        slide.setEndValue(target)
-        slide.setEasingCurve(_EASE)
-        _keep(slide)
-        slide.start()
-        fade_in(widget, duration=duration)
+        fade_in(widget, duration=duration, start=0.35)
 
     if delay:
         # El temporizador se cuelga del widget: si el widget muere, muere con él y
@@ -108,10 +152,10 @@ def rise_in(
         run()
 
 
-def stagger(widgets: list[QWidget], *, step: int = 45, distance: int = 12) -> None:
+def stagger(widgets: list[QWidget], *, step: int = 40, **_ignored: object) -> None:
     """Entrada en cascada. Da la sensación de que la pantalla se compone sola."""
     for index, widget in enumerate(widgets):
-        rise_in(widget, distance=distance, delay=index * step)
+        rise_in(widget, delay=index * step)
 
 
 def cross_fade(stack: QStackedWidget, index: int, *, duration: int | None = None) -> None:
@@ -129,26 +173,35 @@ def pulse(widget: QWidget, *, duration: int | None = None) -> None:
     """Latido corto para confirmar que algo pasó donde el usuario estaba mirando."""
     if not is_alive(widget):
         return
+    total = duration or MOTION["base"]
+
     effect = QGraphicsOpacityEffect(widget)
     effect.setOpacity(1.0)
     widget.setGraphicsEffect(effect)
 
+    guard = _DropEffectOnResize()
+    _ALIVE.add(guard)
+    widget.installEventFilter(guard)
+
     group = QSequentialAnimationGroup(widget)
     down = QPropertyAnimation(effect, b"opacity")
-    down.setDuration((duration or MOTION["base"]) // 2)
+    down.setDuration(total // 2)
     down.setStartValue(1.0)
     down.setEndValue(0.35)
     up = QPropertyAnimation(effect, b"opacity")
-    up.setDuration((duration or MOTION["base"]) // 2)
+    up.setDuration(total // 2)
     up.setStartValue(0.35)
     up.setEndValue(1.0)
     group.addAnimation(down)
     group.addAnimation(up)
-    group.finished.connect(
-        lambda: widget.setGraphicsEffect(None) if is_alive(widget) else None
-    )
+    group.finished.connect(lambda: clear_effect(widget))
     _keep(group)
     group.start()
+
+    rescue = QTimer(widget)
+    rescue.setSingleShot(True)
+    rescue.timeout.connect(lambda: clear_effect(widget))
+    rescue.start(total + 250)
 
 
 def count_up(

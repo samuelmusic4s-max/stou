@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"
+     role="img" aria-label="STOU">
+  <title>STOU</title>
+  <desc>Variante para tamaños pequeños: el libro abierto solo, sin el anillo, que a 22 px
+        se confundiría con el borde. El lomo lleva el acento para conservar la marca.</desc>
+
+  <defs>
+    <linearGradient id="lienzoS" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#191D25"/>
+      <stop offset="1" stop-color="#0E1014"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="256" height="256" rx="58" fill="url(#lienzoS)"/>
+  <rect x="1.5" y="1.5" width="253" height="253" rx="56.5" fill="none"
+        stroke="#2A3140" stroke-width="3"/>
+
+  <path d="M40 161 C72 152 104 155 128 174 L128 185 C104 165 72 163 40 172 Z" fill="#C4CBD8"/>
+  <path d="M216 161 C184 152 152 155 128 174 L128 185 C152 165 184 163 216 172 Z" fill="#C4CBD8"/>
+
+  <path d="M128 104 C104 90 72 84 40 93 L40 161 C72 152 104 155 128 174 Z" fill="#EDEFF3"/>
+  <path d="M128 104 C152 90 184 84 216 93 L216 161 C184 152 152 155 128 174 Z" fill="#EDEFF3"/>
+
+  <g stroke="#9AA3B2" stroke-width="9" stroke-linecap="round">
+    <path d="M57 117 L112 122"/>
+    <path d="M57 134 L112 139"/>
+    <path d="M57 151 L96 156"/>
+    <path d="M145 122 L199 117"/>
+    <path d="M145 139 L199 134"/>
+    <path d="M145 156 L184 151"/>
+  </g>
+
+  <path d="M128 104 L128 174" stroke="#5B8DEF" stroke-width="7" stroke-linecap="round"/>
+</svg>

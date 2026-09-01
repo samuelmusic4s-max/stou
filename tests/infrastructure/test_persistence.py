@@ -9,15 +9,24 @@ import pytest
 from stou.composition.container import Container
 from stou.domain.entities.category import Category
 from stou.infrastructure.persistence.database import Database
+from stou.infrastructure.persistence.schema import MIGRATIONS
 from stou.infrastructure.storage.blob_store import BlobStore
 from stou.shared.clock import FixedClock
 
 
 def test_las_migraciones_se_aplican_una_sola_vez(tmp_path: Path) -> None:
     db = Database(tmp_path / "stou.db")
-    assert db.version == 1
+    # Contra la última versión declarada, no contra un número fijo: así agregar una
+    # migración no obliga a editar esta prueba.
+    assert db.version == MIGRATIONS[-1][0]
     assert db.migrate() == 0  # nada nuevo por aplicar
     db.close()
+
+
+def test_las_migraciones_estan_numeradas_en_orden_y_sin_huecos() -> None:
+    """El orden es la única garantía de que dos máquinas acaben con el mismo esquema."""
+    versions = [version for version, _sql in MIGRATIONS]
+    assert versions == list(range(1, len(versions) + 1))
 
 
 def test_la_transaccion_se_revierte_si_nadie_hace_commit(

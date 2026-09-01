@@ -40,6 +40,7 @@ from stou.presentation.qt.theme import (
     relative_day,
 )
 from stou.presentation.services import AppServices
+from stou.presentation.widgets.charts import ActivityChart
 from stou.presentation.widgets.components import (
     GLYPH,
     Card,
@@ -56,7 +57,7 @@ PERIODS = [
     ("Este mes", "month"),
     ("Últimos 30 días", "last30"),
 ]
-CONTENT_MAX_WIDTH = 1080
+CONTENT_MAX_WIDTH = 1360
 
 
 class DashboardView(QWidget):
@@ -76,7 +77,7 @@ class DashboardView(QWidget):
         self._period = QComboBox()
         for text, _key in PERIODS:
             self._period.addItem(text)
-        self._period.setCurrentIndex(1)
+        self._period.setCurrentIndex(3)
         self._period.currentIndexChanged.connect(lambda _: self.refresh())
 
         header = QHBoxLayout()
@@ -90,7 +91,7 @@ class DashboardView(QWidget):
         # Cifra dominante + gráfica, en una sola tarjeta ancha.
         self._headline = MetricTile("tiempo estudiado", glyph=GLYPH["time"], big=True)
         self._headline.setMinimumWidth(240)
-        self._bars = _DayBars()
+        self._bars = ActivityChart(height=180)
 
         chart_card = Card()
         chart_row = QHBoxLayout()
@@ -143,7 +144,7 @@ class DashboardView(QWidget):
         centering = QHBoxLayout(centered)
         centering.setContentsMargins(SPACE["xl"], 0, SPACE["xl"], 0)
         centering.addStretch(1)
-        centering.addWidget(canvas, 1)
+        centering.addWidget(canvas, 20)
         centering.addStretch(1)
 
         scroll = QScrollArea()
@@ -197,7 +198,7 @@ class DashboardView(QWidget):
             if data.total_seconds
             else "Sin sesiones registradas en este período."
         )
-        self._bars.set_data(list(data.by_day))
+        self._bars.set_data(list(data.by_day), today=local_now.date())
 
         self._done.set_value(str(data.completed_tasks))
         self._done.set_note("en el período elegido")
@@ -331,9 +332,11 @@ class _RowList(QWidget):
         self._column = QVBoxLayout(self)
         self._column.setContentsMargins(0, 0, 0, 0)
         self._column.setSpacing(SPACE["xs"])
+        self._column.addStretch(1)
+        self._tail = 1
 
     def clear(self) -> None:
-        while self._column.count():
+        while self._column.count() > self._tail:
             item = self._column.takeAt(0)
             widget = item.widget()
             if widget is not None:
@@ -344,15 +347,18 @@ class _RowList(QWidget):
         if task_id and self._on_click is not None:
             widget.setCursor(Qt.CursorShape.PointingHandCursor)
             widget.mouseReleaseEvent = lambda _e, tid=task_id: self._on_click(tid)  # type: ignore[method-assign]
-        self._column.addWidget(widget)
+        # Antes del elástico final: sin él las filas se reparten por todo el alto y
+        # acaban pegadas al fondo de la tarjeta.
+        self._column.insertWidget(self._column.count() - self._tail, widget)
 
     def set_empty(self, state: QWidget) -> None:
         self.clear()
-        self._column.addWidget(state)
+        self._column.insertWidget(0, state)
 
     @property
     def count(self) -> int:
-        return self._column.count()
+        # Sin contar el elástico del final.
+        return max(0, self._column.count() - self._tail)
 
     def row_texts(self) -> list[str]:
         texts = []

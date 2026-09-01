@@ -9,10 +9,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -151,11 +149,15 @@ class SectionHeader(QWidget):
 
 
 class ActionCard(QFrame):
-    """Tarjeta grande y clicable: la unidad de «qué puedo hacer aquí».
+    """Tarjeta clicable: la unidad de «qué puedo hacer aquí».
 
     Es un solo objetivo de clic con un glifo, un título y una frase que explica el
     resultado de pulsarla. Que sea la tarjeta entera y no un botón pequeño es
     deliberado: reduce la puntería necesaria y hace obvio que es accionable.
+
+    Con ``compact=True`` se dispone en una sola fila. La versión alta tenía sentido en
+    una rejilla de tres, pero como banda de ancho completo dejaba un hueco enorme entre
+    el glifo y el título: mucho aire y poca información.
     """
 
     clicked = Signal()
@@ -168,6 +170,7 @@ class ActionCard(QFrame):
         description: str,
         hint: str = "",
         primary: bool = False,
+        compact: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -175,6 +178,41 @@ class ActionCard(QFrame):
         self._variant_hot = "CardAccent" if primary else "ActionCardHot"
         self.setObjectName(self._variant)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        if compact:
+            self._build_compact(glyph=glyph, title=title, description=description, hint=hint)
+        else:
+            self._build_tall(
+                glyph=glyph, title=title, description=description, hint=hint, primary=primary
+            )
+
+        motion.hover_lift(self, normal=self._variant, hot=self._variant_hot)
+
+    def _build_compact(self, *, glyph: str, title: str, description: str, hint: str) -> None:
+        self.setMinimumHeight(88)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(SPACE["xl"], SPACE["lg"], SPACE["xl"], SPACE["lg"])
+        row.setSpacing(SPACE["lg"])
+
+        mark = label(glyph, "Glyph")
+        mark.setFixedWidth(28)
+        row.addWidget(mark)
+
+        texts = QVBoxLayout()
+        texts.setSpacing(2)
+        texts.addWidget(label(title, "H2", wrap=True))
+        self._description = label(description, "Dim", wrap=True)
+        texts.addWidget(self._description)
+        row.addLayout(texts, 1)
+
+        if hint:
+            row.addWidget(pill(hint, "Accent"))
+
+    def _build_tall(
+        self, *, glyph: str, title: str, description: str, hint: str, primary: bool
+    ) -> None:
         self.setMinimumHeight(132)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
@@ -194,14 +232,6 @@ class ActionCard(QFrame):
         column.addWidget(label(title, "H2", wrap=True))
         self._description = label(description, "Dim", wrap=True)
         column.addWidget(self._description)
-
-        motion.hover_lift(self, normal=self._variant, hot=self._variant_hot)
-        if primary:
-            shadow = QGraphicsDropShadowEffect(self)
-            shadow.setBlurRadius(34)
-            shadow.setOffset(0, 6)
-            shadow.setColor(QColor(0, 0, 0, 110))
-            self.setGraphicsEffect(shadow)
 
     def set_description(self, text: str) -> None:
         self._description.setText(text)

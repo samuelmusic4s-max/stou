@@ -19,7 +19,7 @@ from stou.domain.entities.material import Material
 from stou.domain.entities.section import Section
 from stou.domain.entities.study_session import StudySession
 from stou.domain.entities.task import Task
-from stou.domain.values import MaterialState, TaskStatus
+from stou.domain.values import ItemRole, MaterialState, TaskStatus
 from stou.shared.ids import EntityId
 
 UNCATEGORIZED = "Sin categoría"
@@ -141,7 +141,8 @@ def task_row(
         due_at=task.due_at,
         start_at=task.start_at,
         estimated_minutes=task.estimated_minutes,
-        item_count=len(task.items),
+        # Solo el enunciado cuenta para el progreso; la solución no se «estudia».
+        item_count=len(task.material_items),
         studied_items=studied_items,
         spent_seconds=spent_seconds,
         overdue=overdue,
@@ -153,6 +154,7 @@ def task_item_row(
     material: Material,
     section: Section | None,
     position: int,
+    role: ItemRole = ItemRole.MATERIAL,
 ) -> TaskItemRow:
     return TaskItemRow(
         item_id=item_id,
@@ -163,6 +165,7 @@ def task_item_row(
         range_label=section.locator.label() if section else "",
         studied=section.is_studied if section else False,
         position=position,
+        role=role,
     )
 
 

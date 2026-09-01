@@ -142,4 +142,14 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        2,
+        """
+        -- Una tarea puede llevar también su solución: el mismo material asignado con
+        -- otro papel. Se separa por columna y no por tabla porque comparte todo lo
+        -- demás (orden, sección, material).
+        ALTER TABLE task_items ADD COLUMN role TEXT NOT NULL DEFAULT 'material';
+        CREATE INDEX idx_task_items_role ON task_items(task_id, role);
+        """,
+    ),
 ]

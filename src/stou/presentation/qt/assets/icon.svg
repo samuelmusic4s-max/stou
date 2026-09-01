@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"
+     role="img" aria-label="STOU">
+  <title>STOU</title>
+  <desc>Un libro abierto: el material de estudio. Sin anillo alrededor, porque un arco
+        incompleto se lee como indicador de carga y no como progreso.</desc>
+
+  <defs>
+    <linearGradient id="lienzo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#191D25"/>
+      <stop offset="1" stop-color="#0E1014"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Lienzo: la misma escala de superficie del tema de la aplicación. -->
+  <rect x="0" y="0" width="256" height="256" rx="58" fill="url(#lienzo)"/>
+  <rect x="1.5" y="1.5" width="253" height="253" rx="56.5" fill="none"
+        stroke="#242A36" stroke-width="3"/>
+
+  <!-- Libro abierto: el canto inferior va primero, para que las páginas queden encima. -->
+  <path d="M38 157 C70 148 103 151 128 171 L128 182 C103 163 70 161 38 170 Z" fill="#C4CBD8"/>
+  <path d="M218 157 C186 148 153 151 128 171 L128 182 C153 163 186 161 218 170 Z" fill="#C4CBD8"/>
+
+  <path d="M128 100 C103 85 70 79 38 88 L38 157 C70 148 103 151 128 171 Z" fill="#EDEFF3"/>
+  <path d="M128 100 C153 85 186 79 218 88 L218 157 C186 148 153 151 128 171 Z" fill="#EDEFF3"/>
+
+  <!-- Renglones: sugieren texto sin dibujar letras, que a 48 px serían ruido. -->
+  <g stroke="#9AA3B2" stroke-width="8" stroke-linecap="round">
+    <path d="M56 111 L112 116"/>
+    <path d="M56 129 L112 134"/>
+    <path d="M56 147 L96 151"/>
+    <path d="M144 116 L200 111"/>
+    <path d="M144 134 L200 129"/>
+    <path d="M160 151 L200 147"/>
+  </g>
+
+  <!-- Lomo: lleva el acento del tema, el único color del ícono. -->
+  <path d="M128 100 L128 171" stroke="#5B8DEF" stroke-width="8" stroke-linecap="round"/>
+</svg>

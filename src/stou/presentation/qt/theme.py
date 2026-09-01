@@ -12,43 +12,82 @@ Tres decisiones que gobiernan todo lo demás:
 
 from __future__ import annotations
 
-from PySide6.QtGui import QColor, QFont, QPalette
+from pathlib import Path
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPalette, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
+
+ASSETS = Path(__file__).parent / "assets"
+
+# Tamaños que se rasterizan de cada variante del ícono. La variante pequeña existe
+# porque a 22 px el anillo de progreso del ícono grande se confunde con el borde.
+ICON_VARIANTS: tuple[tuple[str, tuple[int, ...]], ...] = (
+    ("icon-small.svg", (16, 22, 24, 32)),
+    ("icon.svg", (48, 64, 128, 256)),
+)
 
 # --- Tokens -------------------------------------------------------------------
 
+# Paleta «tinta cálida». Tres decisiones que la separan de un tema oscuro genérico:
+#
+# 1. El lienzo no es negro. Un negro puro contra texto claro cansa la vista y hace
+#    que cualquier interfaz parezca la misma. Aquí el fondo es una pizarra con algo
+#    de calidez, y las superficies suben en pasos que se distinguen de verdad.
+# 2. El texto es un blanco cálido, no blanco puro: menos deslumbramiento a las once
+#    de la noche, que es cuando esta aplicación se usa.
+# 3. Hay dos acentos con trabajos distintos: el índigo es «esto se puede pulsar» y
+#    el ámbar es «esto es tiempo o progreso». Nunca compiten en el mismo sitio.
 COLORS = {
-    "bg": "#0E1014",          # lienzo
-    "surface": "#15181E",     # tarjeta
-    "surface_2": "#1C2029",   # tarjeta elevada / hover
-    "surface_3": "#242935",   # control
-    "line": "#242A36",        # solo para separar, nunca para encajonar
-    "text": "#EDEFF3",
-    "text_dim": "#8B93A1",
-    "text_faint": "#5C6472",
-    "accent": "#5B8DEF",
-    "accent_soft": "#22314F",
-    "accent_text": "#0B0D11",
-    "ok": "#35C48D",
-    "ok_soft": "#123A2A",
-    "warn": "#E9B949",
-    "warn_soft": "#3A3020",
-    "danger": "#E5646E",
-    "danger_soft": "#3A2126",
-    "violet": "#7C5CFF",
+    "bg": "#1A1C22",          # lienzo
+    "bg_deep": "#15171C",     # barra lateral y zonas de fondo
+    "surface": "#222530",     # tarjeta
+    "surface_2": "#2B2F3B",   # tarjeta elevada / hover
+    "surface_3": "#343945",   # control
+    "line": "#333845",        # solo para separar, nunca para encajonar
+    "text": "#F2F0EB",        # blanco cálido
+    "text_dim": "#AAAEB9",
+    "text_faint": "#878C99",
+    "accent": "#7B9DF0",      # acción
+    "accent_soft": "#293557",
+    "accent_text": "#101319",
+    "warm": "#E8A44C",
+    "warm_soft": "#3B2F1F",
+    "ok": "#4FC08D",
+    "ok_soft": "#173729",
+    "warn": "#E9B44C",
+    "warn_soft": "#3B3220",
+    "danger": "#EB6B7C",
+    "danger_soft": "#3D242B",
+    "violet": "#8B79F0",
+    # --- Superficie de lectura ---
+    # El marco de la aplicación es oscuro; el material se lee sobre papel. No es un
+    # capricho estético: leer treinta páginas de texto claro sobre fondo oscuro cansa
+    # más que leerlas sobre papel, y esta aplicación existe para leer treinta páginas.
+    # Un PDF ya trae páginas blancas, así que el marco oscuro de siempre creaba además
+    # un salto de contraste violento justo alrededor de lo que se está mirando.
+    "paper": "#F6F1E6",        # la hoja
+    "paper_mat": "#E5DDCB",    # el margen alrededor de la hoja
+    "paper_ink": "#23262C",    # texto sobre papel
+    "paper_ink_dim": "#5B606A",
+    "paper_line": "#D8CFBD",
+    "paper_link": "#2E58A6",   # el índigo del tema no rinde sobre fondo claro
+    "paper_mark": "#C9D8F2",   # selección
 }
 
 # Escala de espacio: todo margen y separación sale de aquí.
 SPACE = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "2xl": 32, "3xl": 48}
 
-# Escala tipográfica.
+# Escala tipográfica. Subida respecto a la primera versión: a 1080p y más, 12 px de
+# cuerpo obliga a acercarse a la pantalla.
 TYPE = {
-    "display": 32,
-    "h1": 23,
-    "h2": 17,
-    "h3": 14,
-    "body": 12,
-    "caption": 11,
+    "display": 34,
+    "h1": 25,
+    "h2": 18,
+    "h3": 15,
+    "body": 13,
+    "caption": 12,
 }
 
 # Duraciones de animación, en milisegundos.
@@ -60,27 +99,42 @@ RADIUS = {"card": 16, "control": 10, "pill": 999}
 STYLESHEET = """
 * {{ outline: 0; }}
 
+/* El fondo NO se declara sobre QWidget.
+ *
+ * Ese era el origen de los «renglones»: un selector QWidget con background pinta
+ * también cada QLabel, y una etiqueta que se estira con la ventana dibuja una banda
+ * opaca del ancho de la tarjeta detrás de su texto. Al maximizar, las bandas se
+ * vuelven evidentes. El fondo va en la ventana y en las superficies con nombre; todo
+ * lo demás es transparente. */
 QWidget {{
-    background: {bg};
     color: {text};
     font-size: {body}px;
 }}
 QMainWindow, QDialog {{ background: {bg}; }}
+QLabel, QCheckBox, QRadioButton {{ background: transparent; }}
+QScrollArea, QScrollArea > QWidget, QScrollArea > QWidget > QWidget {{
+    background: transparent;
+}}
+QSplitter {{ background: transparent; }}
 
 /* --- Tipografía ------------------------------------------------------------ */
 QLabel#Display {{ font-size: {display}px; font-weight: 700; }}
 QLabel#H1      {{ font-size: {h1}px; font-weight: 700; }}
 QLabel#H2      {{ font-size: {h2}px; font-weight: 600; }}
 QLabel#H3      {{ font-size: {h3}px; font-weight: 600; }}
+QLabel#Title   {{ font-size: {h1}px; font-weight: 700; }}
+QLabel#Subtitle {{ color: {text_dim}; font-size: {body}px; }}
 QLabel#Dim     {{ color: {text_dim}; }}
 QLabel#Faint   {{ color: {text_faint}; font-size: {caption}px; }}
 QLabel#Eyebrow {{
     color: {text_faint}; font-size: {caption}px; font-weight: 700;
     letter-spacing: 1.4px;
 }}
-QLabel#MetricBig    {{ font-size: 40px; font-weight: 700; }}
-QLabel#MetricMedium {{ font-size: 24px; font-weight: 700; }}
+QLabel#MetricBig    {{ font-size: 42px; font-weight: 700; }}
+QLabel#MetricMedium {{ font-size: 26px; font-weight: 700; }}
+QLabel#MetricWarm   {{ font-size: 42px; font-weight: 700; color: {warm}; }}
 QLabel#Glyph        {{ font-size: 26px; color: {accent}; }}
+QLabel#GlyphWarm    {{ font-size: 26px; color: {warm}; }}
 QLabel#GlyphLarge   {{ font-size: 46px; color: {text_faint}; }}
 
 /* --- Superficies ----------------------------------------------------------- */
@@ -152,6 +206,14 @@ QPushButton#Link:hover {{ color: #8AB0F5; }}
 QPushButton#Danger {{ background: transparent; color: {danger}; }}
 QPushButton#Danger:hover {{ background: {danger_soft}; }}
 
+/* Paso de mes: cuadrado y discreto, para que no compita con la acción principal. */
+QPushButton#Step {{
+    background: {surface_2}; color: {text_dim};
+    min-width: 30px; max-width: 30px; padding: 6px 0;
+    font-size: {h2}px; font-weight: 700;
+}}
+QPushButton#Step:hover {{ background: {surface_3}; color: {text}; }}
+
 /* --- Entradas -------------------------------------------------------------- */
 QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox,
 QDateTimeEdit, QDateEdit {{
@@ -215,13 +277,13 @@ QTreeWidget#Panel, QListWidget#Panel {{
 }}
 
 /* --- Navegación ------------------------------------------------------------ */
-QWidget#Sidebar {{ background: {surface}; }}
+QWidget#Sidebar {{ background: {bg_deep}; }}
 QListWidget#Nav {{ background: transparent; border: none; font-size: {h3}px; }}
 QListWidget#Nav::item {{
     padding: 12px 14px; margin: 2px 10px; border-radius: {radius_control}px;
     color: {text_dim};
 }}
-QListWidget#Nav::item:hover {{ background: {surface_2}; color: {text}; }}
+QListWidget#Nav::item:hover {{ background: {surface}; color: {text}; }}
 QListWidget#Nav::item:selected {{ background: {accent_soft}; color: {text}; }}
 
 /* --- Píldoras -------------------------------------------------------------- */
@@ -234,6 +296,52 @@ QLabel#PillAccent {{ background: {accent_soft}; color: #A9C3F7; }}
 QLabel#PillOk     {{ background: {ok_soft}; color: {ok}; }}
 QLabel#PillWarn   {{ background: {warn_soft}; color: {warn}; }}
 QLabel#PillDanger {{ background: {danger_soft}; color: {danger}; }}
+
+/* --- Calendario propio ----------------------------------------------------- */
+/* Las celdas tienen altura acotada en el widget; aquí solo el color y el estado. */
+QFrame#DayCell, QFrame#DayCellBusy, QFrame#DayCellOutside, QFrame#DayCellSelected {{
+    border-radius: {radius_control}px;
+    border: 1px solid transparent;
+}}
+QFrame#DayCell {{ background: {bg}; }}
+QFrame#DayCellBusy {{ background: {surface_2}; }}
+QFrame#DayCellOutside {{ background: transparent; }}
+QFrame#DayCellSelected {{ background: {accent_soft}; border: 1px solid {accent}; }}
+QFrame#DayCell:hover, QFrame#DayCellBusy:hover, QFrame#DayCellOutside:hover {{
+    border: 1px solid {surface_3};
+}}
+
+QLabel#DayNumber      {{ font-size: {h2}px; font-weight: 600; color: {text}; }}
+QLabel#DayNumberMuted {{ font-size: {h2}px; font-weight: 500; color: {text_faint}; }}
+QLabel#DayNumberToday {{
+    font-size: {h2}px; font-weight: 800; color: {accent};
+}}
+
+/* Chips de actividad dentro de una celda del mes. */
+QLabel#Chip, QLabel#ChipExam, QLabel#ChipLate {{
+    border-radius: 5px; padding: 2px 6px; font-size: {caption}px; font-weight: 600;
+}}
+QLabel#Chip     {{ background: {accent_soft}; color: #C3D3F8; }}
+QLabel#ChipExam {{ background: {warn_soft}; color: {warn}; }}
+QLabel#ChipLate {{ background: {danger_soft}; color: {danger}; }}
+
+/* --- Superficie de lectura ------------------------------------------------- */
+/* El material se lee sobre papel; el marco sigue siendo oscuro. */
+QWidget#Paper {{ background: {paper_mat}; }}
+QScrollArea#Paper, QScrollArea#Paper > QWidget, QScrollArea#Paper > QWidget > QWidget {{
+    background: {paper_mat};
+}}
+QTextEdit#PaperSheet {{
+    background: {paper};
+    color: {paper_ink};
+    border: none;
+    border-radius: {radius_card}px;
+    padding: 30px 36px;
+    font-size: 15px;
+    selection-background-color: {paper_mark};
+    selection-color: {paper_ink};
+}}
+QLabel#PaperNote {{ color: {paper_ink_dim}; font-size: {caption}px; }}
 
 /* --- Varios ---------------------------------------------------------------- */
 QProgressBar {{
@@ -292,12 +400,100 @@ QCalendarWidget QAbstractItemView:disabled {{ color: {text_faint}; }}
 """
 
 
+# CSS que se inyecta en los documentos de un EPUB.
+#
+# Un EPUB trae la hoja de estilos de su editorial, pensada para una página de libro, no
+# para una ventana de 1400 px. Los tres arreglos que más se notan:
+#
+# 1. **Medida.** Una línea de 1400 px es ilegible: el ojo pierde el renglón al volver.
+#    Se limita a ~34 em, que son unos 70 caracteres.
+# 2. **Papel.** Fondo cálido y tinta oscura, en lugar del blanco puro del navegador.
+# 3. **Alineación a la izquierda.** Muchos EPUB vienen justificados; en una columna
+#    estrecha el justificado abre ríos de espacio en blanco.
+#
+# Va con `!important` a propósito: la hoja de la editorial suele tener selectores más
+# específicos (`body p.calibre1`) y ganaría sin eso.
+READING_CSS = """
+html {{ background: {paper_mat} !important; }}
+body {{
+    background: {paper} !important;
+    color: {paper_ink} !important;
+    max-width: 34em !important;
+    margin: 0 auto !important;
+    padding: 3.4rem 2.6rem 5rem !important;
+    font-family: Georgia, "Liberation Serif", "Times New Roman", serif !important;
+    font-size: 1.06rem !important;
+    line-height: 1.68 !important;
+    text-align: left !important;
+    hyphens: auto;
+}}
+p, li {{
+    color: {paper_ink} !important;
+    line-height: 1.68 !important;
+    text-align: left !important;
+}}
+p {{ margin: 0 0 1.05em !important; }}
+h1, h2, h3, h4, h5, h6 {{
+    color: {paper_ink} !important;
+    font-family: "Segoe UI", system-ui, sans-serif !important;
+    line-height: 1.25 !important;
+    margin: 2em 0 0.6em !important;
+    text-align: left !important;
+}}
+a, a:visited {{ color: {paper_link} !important; }}
+img, svg, figure {{ max-width: 100% !important; height: auto !important; }}
+blockquote {{
+    border-left: 3px solid {paper_line} !important;
+    margin-left: 0 !important;
+    padding-left: 1.1em !important;
+    color: {paper_ink_dim} !important;
+    font-style: italic;
+}}
+code, pre, kbd {{
+    font-family: ui-monospace, "DejaVu Sans Mono", monospace !important;
+    font-size: 0.92em !important;
+}}
+pre {{ overflow-x: auto; }}
+hr {{ border: none !important; border-top: 1px solid {paper_line} !important; }}
+table {{ max-width: 100% !important; }}
+::selection {{ background: {paper_mark}; color: {paper_ink}; }}
+"""
+
+
+def reading_css() -> str:
+    """El CSS de lectura con los colores del tema ya puestos."""
+    return READING_CSS.format(**_tokens())
+
+
 def _tokens() -> dict[str, object]:
     values: dict[str, object] = dict(COLORS)
     values.update(TYPE)
     values.update({f"space_{k}": v for k, v in SPACE.items()})
     values.update({f"radius_{k}": v for k, v in RADIUS.items()})
     return values
+
+
+def app_icon() -> QIcon:
+    """Ícono de la aplicación, con un mapa de bits por tamaño.
+
+    Se rasteriza a mano en vez de dejarle el SVG a Qt porque así se elige qué variante
+    usa cada tamaño: el libro solo para los pequeños, el libro con el anillo para los
+    grandes. Requiere que exista una QApplication, porque construye QPixmap.
+    """
+    icon = QIcon()
+    for name, sizes in ICON_VARIANTS:
+        path = ASSETS / name
+        if not path.is_file():
+            continue
+        renderer = QSvgRenderer(str(path))
+        for size in sizes:
+            pixmap = QPixmap(size, size)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            icon.addPixmap(pixmap)
+    return icon
 
 
 def apply_theme(app: QApplication) -> None:

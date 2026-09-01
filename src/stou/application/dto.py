@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from stou.domain.values import ExamResult, MaterialKind, Priority, TaskStatus
+from stou.domain.values import ExamResult, ItemRole, MaterialKind, Priority, TaskStatus
 from stou.shared.ids import EntityId
 
 
@@ -64,6 +64,11 @@ class TaskItemRow:
     range_label: str
     studied: bool
     position: int
+    role: ItemRole = ItemRole.MATERIAL
+
+    @property
+    def is_solution(self) -> bool:
+        return self.role is ItemRole.SOLUTION
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +93,14 @@ class TaskDetail:
     task: TaskRow
     description: str
     items: tuple[TaskItemRow, ...]
+
+    @property
+    def material(self) -> tuple[TaskItemRow, ...]:
+        return tuple(item for item in self.items if not item.is_solution)
+
+    @property
+    def solutions(self) -> tuple[TaskItemRow, ...]:
+        return tuple(item for item in self.items if item.is_solution)
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,6 +196,8 @@ class HomeOverview:
     next_task: TaskRow | None
     in_progress: bool
     recent_tasks: tuple[TaskRow, ...]
+    # Todo lo abierto, ordenado por urgencia: es la lista que gobierna la pantalla.
+    pending_tasks: tuple[TaskRow, ...]
 
     today_seconds: int
     week_seconds: int
@@ -195,6 +210,13 @@ class HomeOverview:
 
     next_exam: ExamRow | None
     days_to_exam: int | None
+
+    # Actividad reciente para el gráfico y el desglose por materia.
+    recent_days: tuple[DayTime, ...] = ()
+    recent_by_category: tuple[CategoryTime, ...] = ()
+    progress: tuple[CategoryProgress, ...] = ()
+    recent_window_days: int = 0
+    recent_total_seconds: int = 0
 
     @property
     def is_first_run(self) -> bool:

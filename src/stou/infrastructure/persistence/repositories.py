@@ -234,9 +234,17 @@ class SqliteTaskRepository(_Base):
         self._conn.execute("DELETE FROM task_items WHERE task_id = ?", (task.id,))
         for position, item in enumerate(task.items):
             self._conn.execute(
-                "INSERT INTO task_items (id, task_id, material_id, section_id, position) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (item.id, task.id, item.material_id, item.section_id, position),
+                "INSERT INTO task_items "
+                "(id, task_id, material_id, section_id, position, role) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    item.id,
+                    task.id,
+                    item.material_id,
+                    item.section_id,
+                    position,
+                    str(item.role),
+                ),
             )
 
     def get(self, task_id: EntityId) -> Task | None:

@@ -9,15 +9,13 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from PySide6.QtCore import QDate, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QTextCharFormat
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCalendarWidget,
     QHBoxLayout,
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSplitter,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -34,7 +32,7 @@ from stou.domain.events import (
     TaskUpdated,
 )
 from stou.presentation.qt import motion
-from stou.presentation.qt.theme import COLORS, SPACE, relative_day
+from stou.presentation.qt.theme import SPACE, relative_day
 from stou.presentation.services import AppServices
 from stou.presentation.widgets.components import (
     GLYPH,
@@ -45,6 +43,7 @@ from stou.presentation.widgets.components import (
     pill,
 )
 from stou.presentation.widgets.dialogs import ExamDialog, RecordExamDialog, TaskDialog
+from stou.presentation.widgets.month_grid import MonthGrid
 from stou.shared.ids import EntityId
 
 _DAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -87,23 +86,45 @@ class CalendarView(QWidget):
         header = QHBoxLayout()
         header.addLayout(titles, 1)
 
-        self._calendar = QCalendarWidget()
-        self._calendar.setGridVisible(False)
-        self._calendar.setVerticalHeaderFormat(
-            QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader
-        )
-        self._calendar.setNavigationBarVisible(True)
-        self._calendar.currentPageChanged.connect(lambda *_: self.refresh())
-        self._calendar.selectionChanged.connect(self._refresh_day)
+        self._grid = MonthGrid()
+        self._grid.daySelected.connect(lambda _day: self._refresh_day())
+
+        self._month_label = label(self._grid.month_label().capitalize(), "H2")
+        previous = QPushButton("‹")
+        previous.setObjectName("Step")
+        previous.setCursor(Qt.CursorShape.PointingHandCursor)
+        previous.clicked.connect(lambda: self._shift(-1))
+        following = QPushButton("›")
+        following.setObjectName("Step")
+        following.setCursor(Qt.CursorShape.PointingHandCursor)
+        following.clicked.connect(lambda: self._shift(1))
+        today_button = QPushButton("Hoy")
+        today_button.setObjectName("Ghost")
+        today_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        today_button.clicked.connect(lambda: self._go_today())
+
+        month_bar = QHBoxLayout()
+        month_bar.setSpacing(SPACE["sm"])
+        month_bar.addWidget(self._month_label)
+        month_bar.addStretch(1)
+        month_bar.addWidget(today_button)
+        month_bar.addWidget(previous)
+        month_bar.addWidget(following)
+        month_bar_holder = QWidget()
+        month_bar_holder.setLayout(month_bar)
 
         month_card = Card(padding=SPACE["lg"])
+        month_card.add(month_bar_holder)
+        month_card.add(self._grid)
         month_card.add(
-            SectionHeader(
-                "Mes",
-                subtitle="Azul: tareas con fecha. Rojo: exámenes. Haz clic en un día.",
+            label(
+                "Azul: tareas con fecha.  ·  Ámbar: exámenes.  ·  Rojo: atrasado.",
+                "Faint",
             )
         )
-        month_card.add(self._calendar, 1)
+        # La tarjeta del mes ocupa lo que necesita: el calendario ya no se estira hasta
+        # dejar celdas enormes con un número diminuto dentro.
+        month_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         self._day_column = QVBoxLayout()
         self._day_column.setContentsMargins(0, 0, 0, 0)
@@ -137,20 +158,52 @@ class CalendarView(QWidget):
         self._day_card.add(self._day_header)
         self._day_card.add(day_scroll, 1)
         self._day_card.add(actions_holder)
-        self._day_card.setMinimumWidth(360)
+        self._day_card.setMinimumWidth(340)
+        self._day_card.setMaximumWidth(460)
 
-        body = QSplitter(Qt.Orientation.Horizontal)
-        body.addWidget(month_card)
-        body.addWidget(self._day_card)
-        body.setStretchFactor(0, 3)
-        body.setStretchFactor(1, 2)
-        body.setSizes([700, 420])
+        # Rail derecho: el día elegido y, debajo, lo que no se puede mover de sitio.
+        self._exams_card = Card(padding=SPACE["lg"])
+        self._exams_card.add(
+            SectionHeader("Próximos exámenes", subtitle="Las fechas que no se mueven.")
+        )
+        self._exams_column = QVBoxLayout()
+        self._exams_column.setContentsMargins(0, 0, 0, 0)
+        self._exams_column.setSpacing(SPACE["xs"])
+        exams_holder = QWidget()
+        exams_holder.setLayout(self._exams_column)
+        self._exams_card.add(exams_holder)
+        self._exams_card.setMinimumWidth(340)
+        self._exams_card.setMaximumWidth(460)
+
+        right = QVBoxLayout()
+        right.setSpacing(SPACE["lg"])
+        right.addWidget(self._day_card, 3)
+        right.addWidget(self._exams_card, 2)
+
+        body = QHBoxLayout()
+        body.setSpacing(SPACE["lg"])
+        left = QVBoxLayout()
+        left.setSpacing(SPACE["lg"])
+        left.addWidget(month_card)
+        left.addStretch(1)
+        body.addLayout(left, 3)
+        body.addLayout(right, 2)
 
         column = QVBoxLayout(self)
         column.setContentsMargins(SPACE["xl"], SPACE["xl"], SPACE["xl"], SPACE["xl"])
         column.setSpacing(SPACE["lg"])
         column.addLayout(header)
-        column.addWidget(body, 1)
+        column.addLayout(body, 1)
+
+    def _shift(self, delta: int) -> None:
+        self._grid.shift_month(delta)
+        self._month_label.setText(self._grid.month_label().capitalize())
+        self.refresh()
+
+    def _go_today(self) -> None:
+        self._grid.go_to_today()
+        self._month_label.setText(self._grid.month_label().capitalize())
+        self.refresh()
 
     def _connect_events(self) -> None:
         self._s.events.on(
@@ -171,30 +224,52 @@ class CalendarView(QWidget):
 
     def refresh(self) -> None:
         self._entries = self._s.calendar_month.execute(
-            year=self._calendar.yearShown(), month=self._calendar.monthShown()
+            year=self._grid.year, month=self._grid.month
         )
-        self._paint_month()
+        self._grid.set_entries(self._entries)
+        self._month_label.setText(self._grid.month_label().capitalize())
         self._refresh_day()
+        self._refresh_exams()
 
-    def _paint_month(self) -> None:
-        self._calendar.setDateTextFormat(QDate(), QTextCharFormat())
-        for day, entries in self._entries.items():
-            fmt = QTextCharFormat()
-            has_exam = any(entry.exam for entry in entries)
-            fmt.setBackground(
-                QBrush(QColor(COLORS["danger_soft"] if has_exam else COLORS["accent_soft"]))
+    def _refresh_exams(self) -> None:
+        while self._exams_column.count():
+            item = self._exams_column.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+
+        now = datetime.now().astimezone()
+        exams = self._s.list_exams.execute(scheduled_from=now, pending_only=True)
+        if not exams:
+            self._exams_column.addWidget(
+                EmptyState(
+                    glyph=GLYPH["exam"],
+                    title="Sin exámenes por delante",
+                    body="Registra uno y elige qué capítulos cubre: al aprobarlo, ese "
+                    "material se archiva solo.",
+                )
             )
-            fmt.setForeground(QBrush(QColor(COLORS["text"])))
-            names = [
-                entry.exam.title if entry.exam else (entry.task.title if entry.task else "")
-                for entry in entries
-            ]
-            fmt.setToolTip("\n".join(name for name in names if name))
-            self._calendar.setDateTextFormat(QDate(day.year, day.month, day.day), fmt)
+            return
+        for exam in exams[:5]:
+            row = QWidget()
+            line = QHBoxLayout(row)
+            line.setContentsMargins(0, SPACE["xs"], 0, SPACE["xs"])
+            line.setSpacing(SPACE["sm"])
+            texts = QVBoxLayout()
+            texts.setSpacing(1)
+            texts.addWidget(label(exam.title, "H3"))
+            texts.addWidget(
+                label(f"{exam.category_path} · {exam.section_count} secciones", "Faint")
+            )
+            line.addLayout(texts, 1)
+            if exam.scheduled_at is not None:
+                line.addWidget(pill(relative_day(exam.scheduled_at, now), "Warn"))
+            self._exams_column.addWidget(row)
+        self._exams_column.addStretch(1)
 
     def _selected_date(self) -> date:
-        raw = self._calendar.selectedDate()
-        return date(raw.year(), raw.month(), raw.day())
+        return self._grid.selected
 
     def _refresh_day(self) -> None:
         while self._day_column.count():

@@ -35,7 +35,7 @@ from stou.domain.events import (
     TaskStatusChanged,
     TaskUpdated,
 )
-from stou.domain.values import TaskStatus
+from stou.domain.values import ItemRole, TaskStatus
 from stou.presentation.qt import motion
 from stou.presentation.qt.theme import (
     SPACE,
@@ -56,7 +56,7 @@ from stou.presentation.widgets.dialogs import (
 )
 from stou.shared.ids import EntityId
 
-CONTENT_MAX_WIDTH = 1080
+CONTENT_MAX_WIDTH = 1360
 
 FILTERS: list[tuple[str, list[TaskStatus] | None]] = [
     ("Abiertas", [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
@@ -150,7 +150,7 @@ class TasksView(QWidget):
         centering = QHBoxLayout(centered)
         centering.setContentsMargins(SPACE["xl"], 0, SPACE["xl"], 0)
         centering.addStretch(1)
-        centering.addWidget(canvas, 1)
+        centering.addWidget(canvas, 20)
         centering.addStretch(1)
 
         scroll = QScrollArea()
@@ -334,6 +334,38 @@ class TasksView(QWidget):
         if ids:
             self._s.assign_material.execute(task_id=task_id, section_ids=ids)
 
+    def _offer_solution(self, task_id: EntityId) -> None:
+        """Añade la solución de la tarea.
+
+        La solución se busca en **toda** la biblioteca, no solo en la materia de la
+        tarea: el solucionario suele ser un archivo aparte, y a menudo sin seccionar.
+        """
+        sections = self._s.suggest_sections.execute(category_id=None)
+        if not sections:
+            QMessageBox.information(
+                self,
+                "Todavía no hay nada que añadir",
+                "Una solución es material de tu biblioteca. Sube el solucionario "
+                "—un PDF, una foto de tus apuntes, un video— y después añádelo aquí.",
+            )
+            return
+
+        dialog = AssignSectionsDialog(sections, parent=self, as_solution=True)
+        if dialog.exec() != AssignSectionsDialog.DialogCode.Accepted:
+            return
+        ids = dialog.selected_ids()
+        if not ids:
+            return
+        self._s.assign_material.execute(
+            task_id=task_id, section_ids=ids, role=ItemRole.SOLUTION
+        )
+        QMessageBox.information(
+            self,
+            "Solución añadida",
+            "Queda guardada aparte del enunciado. En el modo estudio no se abre hasta "
+            "que pulses «Ver solución».",
+        )
+
     def _menu_for(self, task_id: EntityId, global_position) -> None:  # noqa: ANN001
         row = next((r for r in self._rows if r.id == task_id), None)
         if row is None:
@@ -343,6 +375,8 @@ class TasksView(QWidget):
         study = menu.addAction(f"{GLYPH['study']}  Estudiar")
         edit = menu.addAction("Editar…")
         assign = menu.addAction("Asignar material…")
+        # Al final del menú de material: la solución es lo último que se añade.
+        solution = menu.addAction(f"{GLYPH['check']}  Añadir solución…")
         manual = menu.addAction("Registrar tiempo a mano…")
         menu.addSeparator()
         toggle = menu.addAction(
@@ -361,6 +395,8 @@ class TasksView(QWidget):
             self._edit(row)
         elif chosen == assign:
             self._offer_assign(row.id, row.category_id)
+        elif chosen == solution:
+            self._offer_solution(row.id)
         elif chosen == manual:
             self._manual_time(row)
         elif chosen == toggle:

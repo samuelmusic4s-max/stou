@@ -15,7 +15,7 @@ from stou.domain.events import (
     TaskStatusChanged,
     TaskUpdated,
 )
-from stou.domain.values import Priority, TaskStatus
+from stou.domain.values import ItemRole, Priority, TaskStatus
 from stou.shared.ids import EntityId, new_id
 
 
@@ -28,6 +28,7 @@ class TaskItem:
     material_id: EntityId
     section_id: EntityId | None = None
     position: int = 0
+    role: ItemRole = ItemRole.MATERIAL
 
     @classmethod
     def create(
@@ -37,6 +38,7 @@ class TaskItem:
         material_id: EntityId,
         section_id: EntityId | None = None,
         position: int = 0,
+        role: ItemRole = ItemRole.MATERIAL,
     ) -> TaskItem:
         return cls(
             id=new_id(),
@@ -44,7 +46,12 @@ class TaskItem:
             material_id=material_id,
             section_id=section_id,
             position=position,
+            role=role,
         )
+
+    @property
+    def is_solution(self) -> bool:
+        return self.role is ItemRole.SOLUTION
 
 
 @dataclass(kw_only=True)
@@ -174,28 +181,47 @@ class Task(Entity):
         material_id: EntityId,
         now: datetime,
         section_id: EntityId | None = None,
+        role: ItemRole = ItemRole.MATERIAL,
     ) -> TaskItem:
         already = any(
-            item.material_id == material_id and item.section_id == section_id
+            item.material_id == material_id
+            and item.section_id == section_id
+            and item.role is role
             for item in self.items
         )
         if already:
-            raise ValueError("Ese material ya está asignado a la tarea")
+            raise ValueError(
+                "Esa solución ya está asignada a la tarea"
+                if role is ItemRole.SOLUTION
+                else "Ese material ya está asignado a la tarea"
+            )
         item = TaskItem.create(
             task_id=self.id,
             material_id=material_id,
             section_id=section_id,
             position=len(self.items),
+            role=role,
         )
         self.items.append(item)
         self.touch(now)
         self.record(
             TaskMaterialAssigned(
-                task_id=self.id, material_id=material_id, section_id=section_id
+                task_id=self.id,
+                material_id=material_id,
+                section_id=section_id,
+                role=str(role),
             ),
             at=now,
         )
         return item
+
+    @property
+    def material_items(self) -> list[TaskItem]:
+        return [item for item in self.items if item.role is ItemRole.MATERIAL]
+
+    @property
+    def solution_items(self) -> list[TaskItem]:
+        return [item for item in self.items if item.role is ItemRole.SOLUTION]
 
     def unassign(self, item_id: EntityId, now: datetime) -> None:
         remaining = [item for item in self.items if item.id != item_id]

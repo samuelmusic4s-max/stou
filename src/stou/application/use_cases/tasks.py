@@ -12,7 +12,7 @@ from stou.application.ports.unit_of_work import UnitOfWork
 from stou.application.use_cases._shared import commit_and_publish, require
 from stou.domain.entities.task import Task
 from stou.domain.events import TaskDeleted
-from stou.domain.values import Priority, TaskStatus
+from stou.domain.values import ItemRole, Priority, TaskStatus
 from stou.shared.clock import Clock
 from stou.shared.ids import EntityId
 
@@ -206,7 +206,9 @@ class GetTaskDetail:
                 if material is None:
                     continue
                 section = uow.sections.get(item.section_id) if item.section_id else None
-                items.append(task_item_row(item.id, material, section, item.position))
+                items.append(
+                    task_item_row(item.id, material, section, item.position, item.role)
+                )
             return TaskDetail(
                 task=_row_with_progress(uow, task, index, now),
                 description=task.description,
@@ -226,6 +228,7 @@ class AssignMaterialToTask:
         task_id: EntityId,
         material_id: EntityId | None = None,
         section_ids: list[EntityId] | None = None,
+        role: ItemRole = ItemRole.MATERIAL,
     ) -> None:
         now = self._clock.now()
         with self._uow as uow:
@@ -238,14 +241,21 @@ class AssignMaterialToTask:
                 require(section, "La sección no existe")
                 assert section is not None
                 try:
-                    task.assign(material_id=section.material_id, section_id=section.id, now=now)
+                    task.assign(
+                        material_id=section.material_id,
+                        section_id=section.id,
+                        now=now,
+                        role=role,
+                    )
                 except ValueError:
                     continue
 
             if material_id is not None:
                 require(uow.materials.get(material_id), "El material no existe")
                 with suppress(ValueError):  # ya estaba asignado
-                    task.assign(material_id=material_id, section_id=None, now=now)
+                    task.assign(
+                        material_id=material_id, section_id=None, now=now, role=role
+                    )
 
             uow.tasks.update(task)
             commit_and_publish(uow, self._bus, task)
@@ -321,7 +331,7 @@ def _row_with_progress(
 ) -> TaskRow:
     spent = sum(s.effective_seconds for s in uow.sessions.list_by_task(task.id))
     studied = 0
-    for item in task.items:
+    for item in task.material_items:
         if item.section_id:
             section = uow.sections.get(item.section_id)
             if section and section.is_studied:

@@ -69,6 +69,7 @@ class StudyWindow(QWidget):
         self._had_activity = True
         self._focus_mode = False
         self._closing = False
+        self._showing_solution = False
 
         self._detail: TaskDetail = self._s.task_detail.execute(task_id=task_id)
 
@@ -93,7 +94,7 @@ class StudyWindow(QWidget):
         QShortcut(QKeySequence("Ctrl+Return"), self, self._mark_current_studied)
         QShortcut(QKeySequence("Ctrl+W"), self, self.close)
 
-        if self._detail.items:
+        if self._detail.material:
             self._items.setCurrentRow(0)
         else:
             self._show_no_material()
@@ -169,12 +170,22 @@ class StudyWindow(QWidget):
         assign_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         assign_btn.clicked.connect(lambda: self._assign_more())
 
+        # La solución se guarda aparte y no se abre sola: verla antes de intentarlo es
+        # la forma más rápida de creer que entendiste algo que no entendiste.
+        self._solution_btn = QPushButton(f"{GLYPH['check']}  Ver solución")
+        self._solution_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._solution_btn.clicked.connect(lambda: self._toggle_solution())
+        self._solution_note = label("", "Faint", wrap=True)
+
         self._left = Card(padding=SPACE["md"])
         self._left.add(label("EN ESTA TAREA", "Eyebrow"))
         self._left.add(self._items, 1)
         self._left.add(assign_btn)
+        self._left.add(self._solution_btn)
+        self._left.add(self._solution_note)
         self._left.setMinimumWidth(250)
         self._left.setMaximumWidth(340)
+        self._refresh_solution_button()
 
         # --- visor ------------------------------------------------------------
         self._section_title = label("", "H3")
@@ -258,7 +269,9 @@ class StudyWindow(QWidget):
         current_id = self._current_item.item_id if self._current_item else None
         self._items.blockSignals(True)
         self._items.clear()
-        for item in self._detail.items:
+        # Solo el enunciado. La solución vive detrás de su botón.
+        visible = self._detail.solutions if self._showing_solution else self._detail.material
+        for item in visible:
             mark = GLYPH["check"] if item.studied else "·"
             text = f"{mark}  {item.title}"
             if item.range_label:
@@ -276,6 +289,39 @@ class StudyWindow(QWidget):
                 if data.item_id == current_id:
                     self._items.setCurrentRow(index)
                     break
+
+    def _refresh_solution_button(self) -> None:
+        """El botón dice la verdad sobre lo que hay: no promete una solución que falta."""
+        solutions = self._detail.solutions
+        if not solutions:
+            self._solution_btn.setEnabled(False)
+            self._solution_btn.setText(f"{GLYPH['check']}  Ver solución")
+            self._solution_note.setText(
+                "Esta tarea no tiene solución guardada. Puedes añadirla desde el menú "
+                "de la tarea, en «Añadir solución»."
+            )
+            return
+        self._solution_btn.setEnabled(True)
+        if self._showing_solution:
+            self._solution_btn.setText(f"{GLYPH['arrow']}  Volver al enunciado")
+            self._solution_note.setText("Estás viendo la solución.")
+        else:
+            self._solution_btn.setText(f"{GLYPH['check']}  Ver solución")
+            plural = "" if len(solutions) == 1 else "es"
+            self._solution_note.setText(
+                f"{len(solutions)} solución{plural} guardada{plural}. Inténtalo antes de abrirla."
+            )
+
+    def _toggle_solution(self) -> None:
+        if not self._detail.solutions:
+            return
+        self._showing_solution = not self._showing_solution
+        self._refresh_items()
+        self._refresh_solution_button()
+        if self._items.count():
+            self._items.setCurrentRow(0)
+        else:
+            self._show_no_material()
 
     def _show_no_material(self) -> None:
         self._viewer_stack.setCurrentIndex(1)
@@ -468,6 +514,7 @@ class StudyWindow(QWidget):
             else "sin material"
         )
         self._refresh_items()
+        self._refresh_solution_button()
         if self._detail.items and self._viewer_stack.currentIndex() == 1:
             self._viewer_stack.setCurrentIndex(2)
             self._studied_btn.setEnabled(True)

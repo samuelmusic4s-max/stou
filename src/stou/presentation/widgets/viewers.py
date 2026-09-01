@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QMargins, Qt, QUrl, Signal, Slot
+from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -27,9 +27,16 @@ from PySide6.QtWidgets import (
 
 from stou.application.use_cases.materials import MaterialSource
 from stou.domain.values import MaterialKind
-from stou.presentation.qt.theme import format_clock
+from stou.presentation.qt.theme import COLORS, SPACE, format_clock, reading_css
 
 YOUTUBE_ID = re.compile(r"(?:v=|youtu\.be/|/embed/|/shorts/)([A-Za-z0-9_-]{6,})")
+
+# Ancho máximo de una columna de lectura: unos 70 caracteres, que es donde el ojo
+# vuelve al renglón siguiente sin perderse.
+READING_MEASURE = 820
+# Una página de PDF aguanta más ancho que una columna de texto suelto, porque el
+# documento ya trae sus propios márgenes.
+PAGE_MEASURE = 1080
 
 
 class BaseViewer(QWidget):
@@ -69,6 +76,17 @@ class PdfViewer(BaseViewer):
         self._view.setDocument(self._document)
         self._view.setPageMode(QPdfView.PageMode.MultiPage)
         self._view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
+        # Las páginas de un PDF ya son blancas: sobre el fondo casi negro de la
+        # aplicación quedaba un salto de contraste violento justo alrededor de lo que
+        # se está leyendo. El paspartú cálido lo suaviza.
+        self._view.setFrameStyle(0)  # el marco de Qt cortaba el paspartú
+        self._view.setDocumentMargins(QMargins(18, 18, 18, 18))
+        self._view.setPageSpacing(14)
+        palette = self._view.palette()
+        palette.setColor(QPalette.ColorRole.Dark, QColor(COLORS["paper_mat"]))
+        palette.setColor(QPalette.ColorRole.Base, QColor(COLORS["paper_mat"]))
+        self._view.setPalette(palette)
+        self._view.setBackgroundRole(QPalette.ColorRole.Dark)
 
         bar = QHBoxLayout()
         bar.setContentsMargins(0, 0, 0, 0)
@@ -99,7 +117,20 @@ class PdfViewer(BaseViewer):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
         layout.addLayout(bar)
-        layout.addWidget(self._view, 1)
+
+        # La página se acota igual que una columna de texto y queda enmarcada por el
+        # paspartú. Con «Ajustar a lo ancho» en una ventana de 1500 px la hoja salía
+        # gigante, y leerla obligaba a barrer la cabeza de lado a lado.
+        self._view.setMaximumWidth(PAGE_MEASURE)
+        framed = QHBoxLayout()
+        framed.setContentsMargins(0, 0, 0, 0)
+        framed.addStretch(1)
+        framed.addWidget(self._view, 20)
+        framed.addStretch(1)
+        mat = QWidget()
+        mat.setObjectName("Paper")
+        mat.setLayout(framed)
+        layout.addWidget(mat, 1)
 
         prev_btn.clicked.connect(lambda: self._jump(self._current_page() - 1))
         next_btn.clicked.connect(lambda: self._jump(self._current_page() + 1))
@@ -262,6 +293,7 @@ class EpubViewer(BaseViewer):
         self._documents = documents
         self._index = 0
         self._view = QWebEngineView(self)
+        self._install_reading_style()
 
         bar = QHBoxLayout()
         bar.setContentsMargins(0, 0, 0, 0)
@@ -284,6 +316,36 @@ class EpubViewer(BaseViewer):
         next_btn.clicked.connect(lambda: self._show(self._index + 1))
 
         self._show(int(source.reading_position or 0))
+
+    def _install_reading_style(self) -> None:
+        """Inyecta la hoja de lectura en cada documento del libro.
+
+        Se hace con un script del motor y no reescribiendo el HTML porque así se
+        conservan las rutas relativas del EPUB: las imágenes y las fuentes del libro
+        siguen resolviéndose desde su carpeta.
+        """
+        from PySide6.QtWebEngineCore import QWebEngineScript
+
+        css = reading_css().replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+        source = (
+            "(function () {"
+            "  var previous = document.getElementById('stou-reading');"
+            "  if (previous) { previous.remove(); }"
+            "  var style = document.createElement('style');"
+            "  style.id = 'stou-reading';"
+            f"  style.textContent = `{css}`;"
+            "  (document.head || document.documentElement).appendChild(style);"
+            "})();"
+        )
+
+        script = QWebEngineScript()
+        script.setName("stou-reading")
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
+        # En el mundo principal: tiene que tocar el DOM que ve la página.
+        script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        script.setRunsOnSubFrames(True)
+        script.setSourceCode(source)
+        self._view.page().scripts().insert(script)
 
     def _show(self, index: int) -> None:
         if not self._documents:
@@ -422,6 +484,8 @@ class ImageViewer(BaseViewer):
             self._pixmap = QPixmap()
 
         area = QScrollArea()
+        # Paspartú cálido: una foto de apuntes sobre fondo casi negro deslumbra.
+        area.setObjectName("Paper")
         area.setWidget(self._label)
         area.setWidgetResizable(True)
 
@@ -451,21 +515,44 @@ class ImageViewer(BaseViewer):
 
 
 class NoteViewer(BaseViewer):
-    """Nota con texto enriquecido. Guarda al perder el foco o al cerrar."""
+    """Nota con texto enriquecido, sobre papel. Guarda al perder el foco o al cerrar."""
 
     saveRequested = Signal(str)
 
     def __init__(self, source: MaterialSource, parent: QWidget | None = None) -> None:
         super().__init__(source, parent)
         self._editor = QTextEdit()
+        self._editor.setObjectName("PaperSheet")
         self._editor.setAcceptRichText(True)
+        self._editor.setFrameShape(QTextEdit.Shape.NoFrame)
+        # Line-height y familia se aplican al HTML del documento; el resto lo pone el
+        # QSS de #PaperSheet.
+        self._editor.document().setDefaultStyleSheet(
+            "p, li { line-height: 150%; }"
+            "h1, h2, h3 { line-height: 125%; }"
+            f"a {{ color: {COLORS['paper_link']}; }}"
+        )
         self._editor.setHtml(source.body or "")
         self._dirty = False
         self._editor.textChanged.connect(self._mark_dirty)
 
+        # La hoja no se estira a lo ancho de la ventana: una línea de mil píxeles hace
+        # perder el renglón al volver.
+        self._editor.setMaximumWidth(READING_MEASURE)
+
+        centered = QHBoxLayout()
+        centered.setContentsMargins(SPACE["lg"], SPACE["lg"], SPACE["lg"], SPACE["lg"])
+        centered.addStretch(1)
+        centered.addWidget(self._editor, 20)
+        centered.addStretch(1)
+
+        mat = QWidget()
+        mat.setObjectName("Paper")
+        mat.setLayout(centered)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._editor, 1)
+        layout.addWidget(mat, 1)
 
     def _mark_dirty(self) -> None:
         self._dirty = True

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -49,6 +50,19 @@ def _install_error_reporting() -> None:
     sys.excepthook = hook
 
 
+def _claim_window_identity() -> None:
+    """Fijar el nombre de instancia de la ventana antes de que Qt lo invente.
+
+    En X11 la ventana se identifica con `WM_CLASS`, un par (instancia, clase). La clase
+    sale de `setApplicationName` («STOU»), pero la instancia la deduce Qt del nombre del
+    programa: arrancando con `python -m stou`, `sys.argv[0]` es la ruta de `__main__.py`
+    y la ventana terminaba anunciándose como «__main__.py». Qt respeta `RESOURCE_NAME`
+    si está puesto, así que se declara aquí y el par queda («stou», «STOU»), estable sea
+    que se abra por el lanzador, por `uv run` o por doble clic.
+    """
+    os.environ.setdefault("RESOURCE_NAME", "stou")
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -58,10 +72,12 @@ def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     data_dir = Path(args[0]) if args else None
 
+    _claim_window_identity()
+
     from PySide6.QtWidgets import QApplication
 
     from stou.presentation.qt.main_window import MainWindow
-    from stou.presentation.qt.theme import apply_theme
+    from stou.presentation.qt.theme import app_icon, apply_theme
 
     container = Container.create(data_dir)
     subscriptions.register(container.bus)
@@ -75,6 +91,11 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv[:1])
     app.setApplicationName("STOU")
     app.setOrganizationName("stou")
+    # El escritorio empareja la ventana con su lanzador por este nombre. Sin él, Qt
+    # anuncia el del intérprete («python3»), no existe «python3.desktop», y la barra de
+    # tareas muestra el ícono de «aplicación desconocida» en vez del nuestro.
+    app.setDesktopFileName("stou")
+    app.setWindowIcon(app_icon())
     apply_theme(app)
     _install_error_reporting()
 

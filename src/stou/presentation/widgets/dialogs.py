@@ -158,16 +158,22 @@ class TaskDialog(QDialog):
 
 
 class AssignSectionsDialog(QDialog):
-    """Elige secciones activas y no estudiadas para asignarlas a una tarea."""
+    """Elige secciones activas y no estudiadas para asignarlas a una tarea.
+
+    ``as_solution`` solo cambia los textos: lo que se asigna es material igual, pero
+    el usuario tiene que ver sin dudar si está poniendo el enunciado o la respuesta.
+    """
 
     def __init__(
         self,
         sections: list[SectionRow],
         *,
         parent: QWidget | None = None,
+        as_solution: bool = False,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Asignar material")
+        self._as_solution = as_solution
+        self.setWindowTitle("Añadir solución" if as_solution else "Asignar material")
         self.setMinimumSize(560, 460)
 
         self._filter = QLineEdit()
@@ -180,13 +186,24 @@ class AssignSectionsDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Asignar")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
+            "Añadir como solución" if as_solution else "Asignar"
+        )
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
+        heading = (
+            "Elige la solución de esta tarea. Queda guardada aparte y en el modo "
+            "estudio no se abre hasta que la pidas."
+            if as_solution
+            else "Secciones disponibles (activas y sin estudiar)"
+        )
+        title = QLabel(heading)
+        title.setWordWrap(True)
+
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Secciones disponibles (activas y sin estudiar)"))
+        layout.addWidget(title)
         layout.addWidget(self._filter)
         layout.addWidget(self._list, 1)
         layout.addWidget(buttons)

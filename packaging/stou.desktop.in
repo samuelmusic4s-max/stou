@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=STOU
+GenericName=Tareas de estudio
+Comment=Tus tareas de estudio con el material integrado
+Exec=@EXEC@
+Path=@PATH@
+Icon=stou
+Terminal=false
+Categories=Education;
+StartupNotify=true
+StartupWMClass=STOU

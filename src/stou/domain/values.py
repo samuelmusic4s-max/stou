@@ -46,6 +46,18 @@ class ExamResult(StrEnum):
     FAILED = "failed"
 
 
+class ItemRole(StrEnum):
+    """Para qué sirve un material dentro de una tarea.
+
+    Una tarea de estudio y su solución no son la misma cosa aunque las dos sean
+    material: la solución se consulta *después* de intentarlo. Sin distinguirlas, el
+    modo estudio abriría la respuesta junto al enunciado.
+    """
+
+    MATERIAL = "material"
+    SOLUTION = "solution"
+
+
 class LocatorUnit(StrEnum):
     """Unidad en la que se delimita una sección según el tipo de material."""
 
